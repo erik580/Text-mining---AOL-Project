@@ -1,0 +1,18 @@
+# --- Python ---
+.venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# --- Data (jangan commit data mentah/olahan; biarkan notebook yang menghasilkannya) ---
+data/
+results/
+
+# --- File eksplorasi lokal (contoh HTML & aset artikel) ---
+test.html
+test_files/
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.vscode/

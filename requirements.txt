@@ -1,0 +1,28 @@
+# =============================================================
+# Requirements untuk Phase 01: Crawling & Scraping CNBC Indonesia
+# =============================================================
+# Install (disarankan di virtual environment):
+#   python -m venv .venv
+#   .venv\Scripts\activate        (Windows PowerShell)
+#   pip install -r requirements.txt
+#
+# Menjalankan notebook:
+#   pip install jupyterlab        (atau pakai Jupyter extension di VS Code)
+#   jupyter lab
+# =============================================================
+
+# --- HTTP & scraping ---
+requests==2.32.3            # unduh halaman / sitemap
+beautifulsoup4==4.12.3      # parser HTML utama (sesuai permintaan)
+lxml==5.3.0                 # backend parser cepat untuk BeautifulSoup (HTML & XML sitemap)
+
+# --- Data handling ---
+pandas==2.2.3              # tabel data mentah + simpan CSV/Parquet
+pyarrow==17.0.0            # engine Parquet (disarankan untuk isi artikel yang panjang)
+
+# --- Utilitas ---
+tqdm==4.66.5               # progress bar saat crawl/scrape ribuan artikel
+
+# --- Lingkungan notebook (opsional, bila belum ada Jupyter) ---
+# jupyterlab==4.2.5
+# ipykernel==6.29.5
