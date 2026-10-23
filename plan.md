@@ -1,158 +1,164 @@
-# Rencana Teknis — Pipeline Text Mining ABSA Berita Ekonomi CNBC Indonesia
+# Rencana: Alur Proses, Pembagian Tugas, & Timeline
 
-Dokumen ini merangkum **keputusan teknis** (implementasi text mining) yang disepakati dalam sesi diskusi. Untuk kerangka penelitian, metodologi, dan anotasi, lihat `ringkasan_penelitian_absa_berita_ekonomi.md`. Dokumen ini fokus pada **bagaimana data ditarik, diparsing, difilter, dan disimpan**.
+Dokumen ini menjelaskan **alur kerja teknis** pipeline penelitian (dari scraping sampai evaluasi sentimen), **pembagian tugas antar anggota tim**, dan **timeline realistis**. Untuk kerangka penelitian & metodologi, lihat `ringkasan_penelitian_absa_berita_ekonomi.md`.
 
 - **Repositori:** <https://github.com/erik580/Text-mining---AOL-Project>
-- **Bahasa & stack:** Python, BeautifulSoup (parser utama), requests, pandas.
-- **Bentuk kerja:** satu notebook `.ipynb` per fase, reproducible, dijalankan di lokal.
-- **Sumber data:** CNBC Indonesia, fokus kanal ekonomi.
-- **Periode:** 1 Januari 2021 – 22 Oktober 2026.
-- **Model yang dibandingkan (fase hilir):** IndoBERT vs XLM-RoBERTa.
+- **Topik:** Perbandingan model klasifikasi (IndoBERT vs XLM-RoBERTa) untuk ABSA dari hasil topic modeling — berita ekonomi 4 bank (BCA, BNI, BRI, Mandiri), CNBC Indonesia, periode 20 Okt 2024 – 20 Okt 2026.
+- **Tim:** **2 orang** — **P1** (saya) & **P2**.
+- **Stack:** Python, `requests` + `BeautifulSoup` (scraping), `pandas` (data), BERTopic (topic modeling), Hugging Face `transformers` (IndoBERT & XLM-RoBERTa), dijalankan di lokal (Anaconda) + Google Colab untuk pelatihan model (opsional, bila butuh GPU).
 
 ---
 
-## 1. Struktur fase (notebook)
+## 1. Alur proses (pipeline) end-to-end
 
-| Notebook | Isi | Output ke disk |
+Satu notebook `.ipynb` **mandiri (self-contained)** per fase. Folder `data/` hanya tempat transit antar-fase (bukan package code).
+
+| Fase | Notebook | Isi | Input | Output |
+|---|---|---|---|---|
+| **01** | `01_crawling_scraping.ipynb` | Scraping berita 4 bank dari `/search` CNBC + filter keyword + checkpoint | — | `data/raw/cnbc_4bank_full.csv` |
+| **02** | `02_preprocessing_sentence_split.ipynb` | Cleaning ringan + pecah berita menjadi kalimat (+ id) | `cnbc_4bank_full.csv` | `data/processed/sentences.csv` |
+| **03** | `03_bertopic_aspek.ipynb` | BERTopic pada kalimat; penamaan & penggabungan klaster → aspek (rujuk FiQA) | `sentences.csv` | `data/processed/sentences_with_aspect.csv` + `daftar_aspek.md` |
+| **04** | `04_sampling_anotasi.ipynb` | Stratified sampling + sheet anotator + hitung Cohen's Kappa | `sentences_with_aspect.csv` | `data/annotation/to_annotate.csv`, `labeled.csv` |
+| **05** | `05_split_dataset.ipynb` | Split train/val/test **per artikel** | `labeled.csv` | `data/final/{train,val,test}.csv` |
+| **06** | `06_train_compare_models.ipynb` | Fine-tune & bandingkan IndoBERT vs XLM-RoBERTa + uji signifikansi | `data/final/*` | `results/` (metrik, confusion matrix) |
+| **07** | `07_analisis_per_aspek.ipynb` | Model terbaik → data tak berlabel; distribusi & tren sentimen per aspek | model terbaik + `sentences_with_aspect.csv` | `results/` (grafik, tabel) |
+
+### Diagram ringkas
+```
+[01 Scraping 4 bank] → [02 Preprocessing & split kalimat] → [03 BERTopic → Aspek (FiQA)]
+        → [04 Sampling & Anotasi manual + Kappa] → [05 Split per artikel]
+        → [06 Latih & bandingkan IndoBERT vs XLM-R] → [07 Analisis sentimen per aspek]
+```
+
+### Prinsip teknis yang dijaga di semua fase
+- Teks yang masuk ke BERTopic & model = **kalimat utuh alami**; **tanpa** stemming / stopword-removal (merusak embedding).
+- Split **per artikel**, bukan per kalimat (hindari kebocoran data antar-split).
+- Label kebenaran = **anotasi manusia**; dilarang memakai LLM/model lain sebagai label akhir di test set.
+- Reproducible: seed tetap, checkpoint/resume di fase scraping.
+
+---
+
+## 2. Rincian tiap fase (checklist teknis)
+
+### Fase 01 — Crawling & Scraping *(SUDAH SELESAI; pilot pass)*
+- Sumber: `GET /search?query=<kw>&page=<N>&fromdate=20/10/2024&todate=20/10/2026` (format `YYYY/MM/DD`).
+- Keyword 4 bank (nama + kode saham): `BCA, BBCA, BRI, BBRI, BNI, BBNI, Mandiri, BMRI` → gabung & dedupe via `id_artikel`.
+- Per artikel: judul (`h2`), link, waktu (`span` terakhir), isi (`div.detail-text`, gabung `<p>`). Buang video (kode tipe 18/19).
+- Checkpoint: tulis *append* ke CSV; skip `id_artikel` yang sudah ada.
+- Fallback bila `/search` beralih ke render JS: endpoint JSON `GET /api/v2/search?query=..&fromdate=..&todate=..&start=0&limit=100`.
+
+### Fase 02 — Preprocessing & pemecahan kalimat
+- Buang boilerplate sisa ("baca juga", iklan, dateline, tanda tangan penulis), normalisasi spasi/karakter.
+- Pecah isi → kalimat; simpan `id_artikel` + `id_kalimat`.
+- Buang kalimat < 5 kata (ambang bisa diuji).
+
+### Fase 03 — BERTopic → aspek
+- Embedding kalimat (model Indonesia/multilingual), HDBSCAN cluster.
+- Namai klaster dari kata kunci **dan** 5–10 contoh kalimat; gabungkan klaster semakna; rujuk **FiQA (Corporate & Stock)**.
+- Tangani outlier (laporkan %, kelompokkan ke "Lainnya" atau keluarkan). **Kunci daftar aspek** sebelum anotasi.
+
+### Fase 04 — Sampling & anotasi
+- Stratified sampling per aspek (tiap aspek cukup contoh). Target ~3.000 pasangan (kalimat, aspek); irisan ~100–200 dilabel dua anotator untuk **Cohen's Kappa**.
+- Pedoman sentimen (positif/netral/negatif) ditulis & disepakati sebelum mulai; kasus abu-abu dicatat.
+
+### Fase 05 — Split dataset
+- Train/val/test **per artikel** (usulan 70/15/15).
+
+### Fase 06 — Latih & bandingkan model
+- Fine-tune IndoBERT & XLM-RoBERTa dengan data/split/tuning setara.
+- Metrik: Macro-F1 (utama), akurasi, F1 per kelas, F1 per aspek, confusion matrix.
+- **Uji signifikansi:** beberapa seed (rata ± simpangan) + uji McNemar/bootstrap.
+
+### Fase 07 — Analisis per aspek
+- Model terbaik → prediksi data tak berlabel → distribusi sentimen per aspek + tren waktu.
+- Catatan: gambaran tren, **bukan** bukti kualitas model (tidak ada label manusia di sana).
+
+---
+
+## 3. Pembagian tugas (2 orang)
+
+Karena tim hanya dua orang, beban dibagi rata sepanjang pipeline, dengan P1 memimpin hulu (data) dan P2 memimpin hilir (model). Anotasi manual **dikerjakan berdua** dengan irisan bersama untuk Cohen's Kappa.
+
+### P1 — Data & Topic Modeling *(= saya)*
+- **Fase 01:** scraping & crawling 4 bank (sudah jalan), menjalankan full-run, menjaga checkpoint.
+- **EDA & Quality Data:** statistik dataset (jumlah artikel per bank/keyword, distribusi waktu, duplikat, panjang isi, artikel kosong/pendek), pembersihan masalah kualitas.
+- **Fase 02:** preprocessing + pemecahan kalimat (menghasilkan `sentences.csv`).
+- **Fase 03:** menjalankan BERTopic + memimpin penamaan/penggabungan klaster → aspek (rujuk **FiQA Corporate & Stock**), menyusun `daftar_aspek.md`.
+- Pemelihara repositori (struktur folder, README, requirements, merge PR).
+- **Anotator #1** pada Fase 04.
+
+### P2 — Anotasi, Modeling, & Evaluasi
+- **Fase 04:** memimpin penyusunan **pedoman sentimen**, menyiapkan mekanisme anotasi, menghitung **Cohen's Kappa**. **Anotator #2**.
+- **Fase 05:** split train/val/test per artikel.
+- **Fase 06:** fine-tune IndoBERT & XLM-RoBERTa, menjaga kesetaraan setup, uji signifikansi (McNemar/bootstrap), confusion matrix.
+- **Fase 07:** analisis sentimen per aspek + visualisasi tren.
+- Menyusun tabel hasil & bagian evaluasi untuk naskah.
+
+### Bersama (P1 & P2)
+- **Fase 04 — Anotasi manual:** sepakati pedoman, bagi batch acak, labeli porsi masing-masing, kerjakan irisan Kappa bersama, bahas & catat kasus abu-abu.
+- Penulisan naskah: P1 bagian Data/Preprocessing/Topic Modeling; P2 bagian Anotasi/Model/Evaluasi; keterbatasan & kesimpulan ditulis bersama.
+
+---
+
+## 4. Timeline realistis (1 November – 19 Desember)
+
+Durasi ±7 minggu (lebih longgar karena tim 2 orang, beban modeling ditanggung P2). Angka bisa digeser; yang penting urutan dependensi antar-fase.
+
+### Minggu 1 — 1 Nov s/d 7 Nov: Data siap
+| Hari | P1 | P2 |
 |---|---|---|
-| `01_crawling_scraping.ipynb` | Kumpulkan URL + scrape isi artikel (fase ini sudah dibuat) | `data/raw/urls_*.csv`, `data/raw/articles_*.jsonl` |
-| `02_preprocessing_sentence_split.ipynb` | Cleaning + pecah kalimat (+id) | `data/processed/sentences.csv` |
-| `03_bertopic_aspek.ipynb` | BERTopic, penamaan & penggabungan aspek | `data/processed/sentences_with_aspect.csv` |
-| `04_sampling_anotasi.ipynb` | Stratified sampling + sheet anotator + Cohen's Kappa | `data/annotation/to_annotate.csv` |
-| `05_split_dataset.ipynb` | Split train/val/test **per artikel** | `data/final/{train,val,test}.csv` |
-| `06_train_compare_models.ipynb` | Fine-tune IndoBERT vs XLM-R, evaluasi | `results/` |
-| `07_analisis_per_aspek.ipynb` | Model terbaik ke data tak berlabel, tren per aspek | `results/` |
+| 1–3 Nov | Jalankan **full-run scraping** 4 bank (Fase 01), pantau checkpoint | Studi literatur FiQA + setup lingkungan training (Colab/GPU), uji load IndoBERT & XLM-R |
+| 4–5 Nov | **EDA & quality check** dataset mentah (distribusi, duplikat, isi pendek) | Siapkan kerangka notebook Fase 06 (skeleton training) |
+| 6–7 Nov | **Fase 02:** preprocessing + pecah kalimat → `sentences.csv` | Review hasil EDA bersama P1 |
+| **Milestone** | ✅ `cnbc_4bank_full.csv` + `sentences.csv` siap; laporan EDA | |
 
-Folder `data/` hanya tempat transit antar-notebook (bukan package code).
+### Minggu 2 — 8 Nov s/d 14 Nov: Aspek terbentuk
+| Hari | P1 | P2 |
+|---|---|---|
+| 8–11 Nov | **Fase 03:** jalankan BERTopic, tuning, tangani outlier | Finalkan pipeline training & evaluasi (dry-run data dummy) |
+| 12–14 Nov | **Namai & gabung klaster → aspek (FiQA)**, susun `daftar_aspek.md` | Siapkan skrip uji signifikansi (McNemar/bootstrap) |
+| **Milestone** | ✅ **Daftar aspek DIKUNCI** + definisi tiap aspek | |
 
----
+### Minggu 3 — 15 Nov s/d 21 Nov: Pedoman & mulai anotasi
+| Hari | P1 | P2 |
+|---|---|---|
+| 15–16 Nov | **Fase 04:** stratified sampling → `to_annotate.csv` + sheet anotator | Tulis **pedoman sentimen**, sepakati kasus abu-abu (bersama P1) |
+| 17–21 Nov | Anotasi batch P1 | Anotasi batch P2 + siapkan irisan Kappa |
+| **Milestone** | ✅ Pedoman final; anotasi berjalan | |
 
-## 2. Fase 01 — Crawling & Scraping (sudah diimplementasikan)
+### Minggu 4 — 22 Nov s/d 28 Nov: Anotasi selesai + Kappa
+| Hari | P1 | P2 |
+|---|---|---|
+| 22–26 Nov | Selesaikan anotasi porsi P1 + irisan Kappa | Selesaikan anotasi porsi P2 + irisan Kappa |
+| 27–28 Nov | Gabung label, bereskan "aspek salah" | **Hitung Cohen's Kappa**; **Fase 05:** split per artikel |
+| **Milestone** | | ✅ `labeled.csv` + nilai Kappa; `data/final/*` siap |
 
-### 2.1 Domain & kanal
+### Minggu 5 — 29 Nov s/d 5 Des: Pelatihan & perbandingan model
+| Hari | P1 | P2 |
+|---|---|---|
+| 29 Nov–2 Des | Analisis statistik dataset (bukti "per aspek perlu": campuran sentimen, chi-square) | **Fase 06:** fine-tune IndoBERT & XLM-R (multi-seed) |
+| 3–5 Des | Tulis bagian Dataset/Preprocessing/Topic Modeling naskah | Hitung metrik + **uji signifikansi**, confusion matrix |
+| **Milestone** | | ✅ `results/` perbandingan model lengkap |
 
-- **Kanal utama (ekonomi):** `market` (pasar modal, moneter, fiskal, nilai tukar, perbankan).
-- **Kanal tambahan opsional:** `research`, `syariah` (masih dalam ranah ekonomi; aktif saat mode full).
-- **Hindari** kanal non-ekonomi (lifestyle, tech, entertainment) agar aspek BERTopic tetap bersih.
+### Minggu 6 — 6 Des s/d 12 Des: Analisis akhir
+| Hari | P1 | P2 |
+|---|---|---|
+| 6–9 Des | Review hasil model bersama, bantu analisis error kualitatif | **Fase 07:** analisis sentimen per aspek + visualisasi tren |
+| 10–12 Des | Rapikan repo & reproducibility | Tulis bagian Model & Evaluasi naskah |
+| **Milestone** | | ✅ Seluruh hasil & grafik tren selesai |
 
-### 2.2 Sumber URL artikel — DUA JALUR
-
-**Jalur A — Sitemap (TERBUKTI BEKERJA, jalur utama saat ini).**
-- Sitemap index: `https://www.cnbcindonesia.com/sitemap.xml` → sub-sitemap per kanal.
-- Per kanal: `sitemap_news.xml` (artikel terbaru, metadata kaya) dan `sitemap_web.xml` (arsip lebih dalam).
-- Tiap entri memberi: `loc` (URL), `news:publication_date`, `news:title`, `news:keywords`.
-- Statis, legal (disediakan resmi), dan parsing-nya sudah diverifikasi.
-
-**Jalur B — Halaman indeks per tanggal (PERLU VERIFIKASI LOKAL).**
-- URL yang disarankan: `https://www.cnbcindonesia.com/market/indeks/5?date=DD/MM/YYYY&tipe=artikel`.
-- **Kendala terverifikasi:** halaman ini **dirender JavaScript**; `requests + BeautifulSoup` **tidak** melihat daftar artikelnya (fetch statis mengembalikan halaman kosong). Selain itu `robots.txt` men-*disallow* `/indeks/*` dan URL ber-`?` untuk Googlebot (untuk `User-agent: *` masih `Allow`).
-- **Cara memakainya:** daftar artikel pada halaman indeks dimuat via **panggilan API internal** (JSON) di belakang layar. Endpoint persisnya **harus diintip dari lokal** (buka DevTools → tab Network → filter XHR saat mengganti tanggal). Setelah endpoint diketahui, panggil langsung dengan `requests` (tetap tanpa browser), lalu parsing isi tiap artikel dengan BeautifulSoup.
-- **Kegunaan jalur B:** memungkinkan filter **per tanggal/tahun** yang presisi (2021–2026) dan menjangkau arsip lebih dalam daripada sitemap.
-
-> **Keputusan:** mulai dengan **Jalur A** untuk membuktikan pipeline (sudah jalan). Lengkapi dengan **Jalur B** setelah endpoint API indeks dikonfirmasi dari lokal. Keduanya menghasilkan daftar URL yang diparsing isinya dengan cara yang sama (lihat 2.4).
-
-### 2.3 Pola URL artikel (sumber ID & metadata)
-
-```
-https://www.cnbcindonesia.com/market/20261022185649-17-778698/kemenkeu-tanggapi-efek-msci-...
-                                 └kanal┘ └─timestamp──┘ └┘ └─id─┘ └────────── slug ──────────┘
-```
-- `20261022185649` = waktu terbit (YYYYMMDDhhmmss) → sumber tanggal andal.
-- kode tipe: `17` = artikel teks; `18`/`19` = **video** (dibuang).
-- `778698` = **id_artikel unik** → dipakai sebagai kunci dedupe & resume.
-
-### 2.4 Ekstraksi isi artikel (TERVERIFIKASI pada `test.html`)
-
-Diverifikasi terhadap satu artikel market asli, bukan asumsi:
-
-- **Judul & tanggal** → dari **JSON-LD** `<script type="application/ld+json">` blok `@type: NewsArticle` (`headline`, `datePublished`). Fallback: meta `og:`.
-- **Isi artikel** → dari kontainer **`div.detail-text`** (kumpulkan paragraf `<p>`).
-  - **PENTING:** JSON-LD CNBC **tidak** memuat `articleBody`. Jadi isi WAJIB dari `div.detail-text`, bukan JSON-LD.
-- **Noise yang dibuang di dalam kontainer** (terbukti ada di HTML asli):
-  - `<script>` iklan (FMG_Tag / cads-generic), `<style>`, `<iframe>`.
-  - `<div>` banner Google Ads (`id` mengandung `div-gpt-ad` / `google_ads`) dan parallax.
-  - Blok video sisipan: `a.autovideocnbc`, `div.video_detail`, `div.sisip_embed`.
-  - `div.read-full-article` (placeholder kosong).
-  - Kode penulis di akhir, mis. `(haa/haa)` / `(rob/rob)` → regex `\( [a-z]{2,4} / [a-z]{2,4} \)$`.
-  - `<p>` kosong dan penanda embed `[Gambas:...]`.
-
-Hasil uji pada `test.html`: judul & tanggal benar, isi 2.009 karakter bersih, teks video tidak bocor, kode penulis tidak bocor.
-
-### 2.5 Filtering
-
-**Dibuang (noise / bukan data):**
-- Artikel **video** (kode tipe 18/19 atau judul diawali "Video:").
-- **Duplikat** (dedupe berdasarkan `id_artikel`).
-- Artikel **kosong / terlalu pendek** (isi < 150 karakter ditandai `isi_kosong_atau_pendek`).
-- URL ber-`?` dan halaman `/indeks/` sebagai target scrape (sesuai `robots.txt`).
-
-**TIDAK difilter:**
-- Tidak menyaring berdasarkan tebakan sentimen (hindari bias distribusi label).
-- Tidak menyaring per perusahaan tertentu (berbeda dari jurnal Wulandhari dkk. 2025 yang menyaring 5 saham LQ45 untuk tujuan prediksi harga; penelitian kita ABSA berita ekonomi umum).
-
-### 2.6 Checkpoint & resume (anti-ulang saat koneksi putus)
-
-- **Crawl:** hasil URL disimpan ke `urls_*.csv`. Jika file sudah ada, crawl dilewati (hapus file untuk crawl ulang).
-- **Scrape:** tiap artikel ditulis *append* satu baris JSON ke `articles_*.jsonl` dengan penulisan line-buffered (langsung ter-flush). Saat sel dijalankan ulang, `id_artikel` yang sudah ada di file **dilewati** → melanjutkan, bukan mengulang.
-- `KeyboardInterrupt` (Stop) ditangani rapi: progres tersimpan.
-
-### 2.7 Etika & kesopanan ke server
-
-- `User-Agent` jelas (identitas riset akademik + kontak).
-- Jeda antar-permintaan: `REQUEST_DELAY = 1.5` detik artikel, `SITEMAP_DELAY = 1.0` detik.
-- Retry dengan exponential backoff (2s, 4s, 8s); `404`/`410` dilewati tanpa retry.
-- Catatan hukum: `robots.txt` hanya aturan teknis; tim tetap wajib mematuhi Ketentuan Penggunaan CNBC Indonesia. Data untuk riset akademik non-komersial.
-
-### 2.8 Skema penyimpanan
-
-**`data/raw/urls_*.csv`** (hasil crawl):
-`id_artikel, kanal, url, tanggal_terbit, judul, keywords`
-
-**`data/raw/articles_*.jsonl`** (hasil scrape, satu artikel per baris):
-`id_artikel, kanal, url, tanggal_terbit, judul_sitemap, keywords, judul, tanggal_terbit_html, isi_mentah, isi_panjang, metode_ekstraksi, status, tanggal_scrape`
-
-- Format **JSONL** dipilih untuk artikel karena isi panjang & mengandung koma/kutip/newline (CSV rapuh).
-- `isi_mentah` disimpan **apa adanya** (cleaning mendalam & pemecahan kalimat → Fase 02).
-- Ekspor ringkas `articles_*.csv` (tanpa `isi_mentah`) untuk inspeksi cepat.
-
-### 2.9 Mode PILOT vs FULL
-
-- `PILOT = True`: rentang pendek (20–22 Okt 2026), kanal `market` saja, maksimum 15 artikel, hanya `sitemap_news.xml`. Untuk uji alur + uji resume.
-- `PILOT = False`: periode penuh 2021–2026, kanal `market`+`research`+`syariah`, `sitemap_news.xml` + `sitemap_web.xml`.
-
-### 2.10 Risiko diketahui / pekerjaan lanjutan
-
-- **Cakupan arsip 2021:** `sitemap_web.xml` kemungkinan tidak mundur sampai 2021. Jalur B (indeks/API) atau arsip publik (Wayback Machine CDX API) menjadi cadangan untuk menambang URL lama. Perlu diverifikasi saat run lokal.
-- **Endpoint API indeks:** belum dikonfirmasi; harus diintip dari DevTools lokal.
-- **Variasi format artikel:** live blog, infografis, atau artikel multi-halaman mungkin perlu penyesuaian selector kecil. Fondasi untuk artikel teks standar sudah terverifikasi.
+### Minggu 7 — 13 Des s/d 19 Des: Finalisasi naskah
+| Hari | P1 | P2 |
+|---|---|---|
+| 13–16 Des | Kompilasi naskah, tulis keterbatasan (bersama) | Review akhir hasil & tabel |
+| 17–19 Des | Finalisasi & proofread (bersama) | Finalisasi & proofread (bersama) |
+| **Milestone** | ✅ **Naskah draf lengkap + seluruh hasil** | |
 
 ---
 
-## 3. Lingkungan lokal
+## 5. Catatan
 
-```powershell
-# dari folder project
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-
-# jalankan notebook: buka 01_crawling_scraping.ipynb di VS Code (kernel .venv), Run All
-# atau headless:
-pip install jupyter
-jupyter nbconvert --to notebook --execute --inplace 01_crawling_scraping.ipynb
-```
-
-Dependency inti (lihat `requirements.txt`): `requests`, `beautifulsoup4`, `lxml`, `pandas`, `pyarrow`, `tqdm`.
-
----
-
-## 4. Status saat ini
-
-- [x] Eksplorasi struktur situs CNBC (sitemap, pola URL, robots.txt).
-- [x] Verifikasi ekstraksi isi pada HTML artikel asli (`test.html`).
-- [x] `01_crawling_scraping.ipynb` dibuat (crawl sitemap + scrape + checkpoint/resume).
-- [x] `requirements.txt` dibuat.
-- [ ] Pilot dijalankan di lokal (verifikasi end-to-end + resume).
-- [ ] Konfirmasi endpoint API indeks (Jalur B) untuk filter per tahun.
-- [ ] Verifikasi cakupan arsip sampai 2021.
-- [ ] Fase 02 dan seterusnya.
+- **Ketergantungan kritis:** Fase 03 (aspek dikunci) harus selesai sebelum Fase 04 (anotasi); Fase 04 (label) harus selesai sebelum Fase 06 (training). **Keterlambatan anotasi adalah risiko terbesar** — mulai sedini mungkin dan kerjakan paralel berdua.
+- **Beban modeling di P2** cukup berat (Fase 05–07); P1 membantu di analisis statistik & penulisan agar seimbang.
+- **Buffer:** sisakan jeda bila ada libur/ujian; anotasi manual biasanya makan waktu lebih lama dari perkiraan.
+- Status & keputusan yang berubah dicatat kembali di dokumen ini + `ringkasan_penelitian_absa_berita_ekonomi.md`.
