@@ -90,7 +90,7 @@ Catatan praktis:
 - **Atribut yang diambil:** `id_artikel`, keyword, kanal, URL, timestamp terbit, judul, waktu listing, isi mentah.
 - **Ekstraksi isi:** judul dari elemen listing (`h2`) / JSON-LD; isi dari kontainer `div.detail-text` (gabung paragraf `<p>`). Artikel **video** (kode tipe 18/19) dan **duplikat** dibuang; tidak ada penyaringan berdasarkan tebakan sentimen.
 
-> **Detail teknis implementasi & alur seluruh pipeline** (metode scraping, selector, checkpoint/resume, pembagian tugas tim, dan timeline) didokumentasikan terpisah di **`alur_proses_dan_pembagian_tugas.md`**. Notebook dijalankan dari repositori: <https://github.com/erik580/Text-mining---AOL-Project>.
+> **Detail teknis implementasi & alur seluruh pipeline** (metode scraping, selector, checkpoint/resume, pembagian tugas tim, dan timeline) didokumentasikan terpisah di **`plan.md`**. Notebook dijalankan dari repositori: <https://github.com/erik580/Text-mining---AOL-Project>.
 
 ---
 
