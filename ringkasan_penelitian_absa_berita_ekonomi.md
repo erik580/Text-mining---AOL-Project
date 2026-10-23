@@ -1,39 +1,39 @@
-# Ringkasan Penelitian: Analisis Sentimen Berbasis Aspek pada Berita Ekonomi
+# Ringkasan Penelitian: Analisis Sentimen Berbasis Aspek pada Berita Ekonomi 4 Bank
 
-**Judul kerja:** *Analisis Sentimen Berbasis Aspek Menggunakan Topic Modeling: Perbandingan IndoBERT dan XLM-RoBERTa pada Berita Ekonomi CNBC Indonesia*
+**Judul kerja:** *Perbandingan Model Klasifikasi untuk Analisis Sentimen Berbasis Aspek dari Hasil Topic Modeling: Studi Kasus Berita Ekonomi 4 Bank Utama Indonesia (BCA, BNI, BRI, Mandiri) di CNBC Indonesia*
 
-> Dokumen ini untuk menyamakan pemahaman dengan rekan anotator. Angka dan keputusan yang bertanda **(usulan)** boleh disesuaikan setelah didiskusikan, tetapi harus dicatat begitu disepakati.
+> Dokumen ini untuk menyamakan pemahaman tim (P1, P2, P3). Angka dan keputusan yang bertanda **(usulan)** boleh disesuaikan setelah didiskusikan, tetapi harus dicatat begitu disepakati.
 
 ---
 
 ## 1. Apa yang kita kerjakan, dan mengapa
 
-**Tujuan:** membandingkan dua model klasifikasi sentimen (positif / netral / negatif) pada berita ekonomi berbahasa Indonesia, dengan sentimen dinilai **per aspek**, bukan per berita. Dua model yang dibandingkan adalah **IndoBERT** (monolingual, dilatih penuh pada korpus bahasa Indonesia) dan **XLM-RoBERTa** (multilingual, dilatih pada 100 bahasa).
+**Tujuan:** membandingkan dua model klasifikasi sentimen (positif / netral / negatif) pada berita ekonomi berbahasa Indonesia yang membahas **empat bank utama — BCA, BNI, BRI, dan Mandiri**, dengan sentimen dinilai **per aspek**, bukan per berita. Aspek diturunkan lewat topic modeling (BERTopic) dan dinamai merujuk taksonomi **FiQA** (kategori *Corporate* dan *Stock*). Dua model yang dibandingkan adalah **IndoBERT** (monolingual, dilatih penuh pada korpus bahasa Indonesia) dan **XLM-RoBERTa** (multilingual, dilatih pada banyak bahasa).
 
-**Klaim yang diangkat:** *sentimen berita ekonomi perlu dianalisis per aspek, dan model yang dilatih penuh pada bahasa Indonesia (IndoBERT) memberikan hasil analisis yang lebih baik daripada model multilingual (XLM-RoBERTa) pada tugas ini.*
+**Klaim yang diangkat:** *sentimen berita ekonomi perbankan perlu dianalisis per aspek, dan model yang dilatih penuh pada bahasa Indonesia (IndoBERT) memberikan hasil klasifikasi yang lebih baik daripada model multilingual (XLM-RoBERTa) pada tugas ini.*
 
-**Hipotesis utama:** model bahasa monolingual yang pretraining-nya sepenuhnya pada bahasa Indonesia menangkap nuansa leksikal dan domain berita ekonomi Indonesia lebih baik daripada model multilingual yang kapasitasnya terbagi ke banyak bahasa, sehingga menghasilkan Macro-F1 lebih tinggi pada ABSA berita ekonomi. Hipotesis ini diuji secara empiris; hasil apa pun (IndoBERT unggul, XLM-RoBERTa unggul, atau selisih tidak signifikan) dilaporkan jujur beserta uji signifikansinya.
+**Hipotesis utama:** model bahasa monolingual yang pretraining-nya sepenuhnya pada bahasa Indonesia menangkap nuansa leksikal dan domain berita ekonomi/perbankan Indonesia lebih baik daripada model multilingual yang kapasitasnya terbagi ke banyak bahasa, sehingga menghasilkan Macro-F1 lebih tinggi pada ABSA berita ekonomi. Hipotesis ini diuji secara empiris; hasil apa pun (IndoBERT unggul, XLM-RoBERTa unggul, atau selisih tidak signifikan) dilaporkan jujur beserta uji signifikansinya.
 
 > **Catatan metodologis:** IndoBERT (resep BERT) dan XLM-RoBERTa (resep RoBERTa) berbeda tidak hanya pada cakupan bahasa (monolingual vs multilingual) tetapi juga pada resep dan korpus pretraining. Karena itu, selisih skor adalah efek **gabungan** dari cakupan bahasa dan perbedaan pretraining, bukan isolasi satu variabel tunggal. Ini dituliskan di bagian keterbatasan. Perbandingan "model utuh" semacam ini lazim dan diterima di literatur applied NLP.
 
-**Mengapa per aspek?** Satu berita ekonomi sering memuat kabar yang bertentangan, misalnya "rupiah melemah, tetapi IHSG ditutup menguat". Kalau seluruh berita hanya diberi satu label, anotator terpaksa memilih satu sentimen dan hasilnya ambigu. Dengan ABSA, kalimat pertama berlabel negatif untuk aspek nilai tukar, dan kalimat kedua positif untuk aspek pasar modal.
+**Mengapa per aspek?** Satu berita perbankan sering memuat kabar yang bertentangan, misalnya "laba BBRI naik, tetapi rasio kredit macetnya ikut meningkat". Kalau seluruh berita hanya diberi satu label, anotator terpaksa memilih satu sentimen dan hasilnya ambigu. Dengan ABSA, kalimat pertama berlabel positif untuk aspek kinerja/laba, dan kalimat kedua negatif untuk aspek kualitas kredit.
 
-**Mengapa topic modeling?** Aspek tidak kita tentukan dari nol. Aspek diturunkan dari data lewat BERTopic, lalu dinamai dan dirapikan oleh kita. Topic modeling juga membantu menetapkan aspek untuk seluruh korpus (~10.000 berita), sedangkan anotasi manual hanya untuk sebagian.
+**Mengapa topic modeling?** Aspek tidak kita tentukan dari nol. Aspek diturunkan dari data lewat BERTopic, lalu dinamai dan dirapikan oleh kita dengan merujuk taksonomi FiQA (Corporate & Stock). Topic modeling juga membantu menetapkan aspek untuk seluruh korpus, sedangkan anotasi manual hanya untuk sebagian.
 
-**Yang dibandingkan hanya dua model sentimen.** Topic modeling bukan objek perbandingan. Ia berada di hulu pipeline untuk menghasilkan aspek.
+**Yang dibandingkan hanya dua model sentimen.** Topic modeling bukan objek perbandingan. Ia berada di hulu pipeline untuk menghasilkan aspek. Objek perbandingan adalah **dua model klasifikasi ABSA** (IndoBERT vs XLM-RoBERTa).
 
 ---
 
 ## 2. Alur keseluruhan
 
 ```
-Crawling & scraping berita CNBC Indonesia
+Crawling & scraping berita CNBC Indonesia (filter 4 bank, Okt 2024–Okt 2026)
         ↓
 Cleaning ringan + pemecahan berita menjadi kalimat
         ↓
 BERTopic pada kalimat → klaster topik
         ↓
-Penamaan & penggabungan klaster → daftar aspek (10–15), DIKUNCI
+Penamaan & penggabungan klaster (rujuk FiQA: Corporate & Stock) → daftar aspek, DIKUNCI
         ↓
 Validasi penetapan aspek (sampel)
         ↓
@@ -41,9 +41,9 @@ Anotasi sentimen manual per pasangan (kalimat, aspek)
         ↓
 Split train / validation / test per artikel
         ↓
-Latih & bandingkan dua model
+Latih & bandingkan dua model (IndoBERT vs XLM-RoBERTa)
         ↓
-Model terbaik dipakai pada data tak berlabel → analisis per aspek
+Model terbaik dipakai pada data tak berlabel → analisis sentimen per aspek
 ```
 
 ---
@@ -62,7 +62,7 @@ Beberapa rujukan yang relevan untuk memosisikan penelitian ini:
 
 > **Catatan referensi:** Ketiga rujukan di atas masih berupa kerangka. Detail penulis, tahun, venue, dan temuan **harus diisi dari sumber asli** sebelum naskah final. Jangan mengutip angka atau kesimpulan sebelum diverifikasi dari dokumen aslinya.
 
-**Celah yang kita isi (research gap):** studi-studi di atas umumnya bekerja pada **analisis sentimen tingkat dokumen/kalimat** dan pada domain **ulasan atau media sosial**. Belum banyak yang menguji perbandingan IndoBERT vs XLM-RoBERTa pada **analisis sentimen berbasis aspek (ABSA)** untuk domain **berita ekonomi berbahasa Indonesia**, di mana aspek diturunkan lewat topic modeling. Kombinasi inilah posisi kebaruan penelitian kita: (a) domain berita ekonomi, (b) setting ABSA dengan aspek dari BERTopic, dan (c) pengujian hipotesis monolingual vs multilingual dengan uji signifikansi yang eksplisit.
+**Celah yang kita isi (research gap):** studi-studi di atas umumnya bekerja pada **analisis sentimen tingkat dokumen/kalimat** dan pada domain **ulasan atau media sosial**. Belum banyak yang menguji perbandingan IndoBERT vs XLM-RoBERTa pada **analisis sentimen berbasis aspek (ABSA)** untuk domain **berita ekonomi/perbankan berbahasa Indonesia**, di mana aspek diturunkan lewat topic modeling dan dirujuk ke taksonomi finansial (FiQA). Kombinasi inilah posisi kebaruan penelitian kita: (a) domain spesifik berita ekonomi 4 bank utama Indonesia, (b) setting ABSA dengan aspek dari BERTopic yang dirujuk FiQA (Corporate & Stock), dan (c) pengujian hipotesis monolingual vs multilingual dengan uji signifikansi yang eksplisit.
 
 ---
 
@@ -81,15 +81,16 @@ Catatan praktis:
 - Tentukan dan catat rentang waktu serta kategori yang diambil.
 - Periksa `robots.txt` dan ketentuan penggunaan CNBC Indonesia, dan atur jeda antar permintaan agar tidak membebani server.
 
-### 4.1 Keputusan yang sudah difinalkan (hasil sesi teknis)
+### 4.1 Keputusan yang sudah difinalkan (hasil sesi teknis, SUDAH di-ACC dosen)
 
-- **Periode:** 1 Januari 2021 – 22 Oktober 2026 (~5,8 tahun). Mengikuti preseden Wulandhari dkk. (2025) yang memakai ~5 tahun berita CNBC Indonesia untuk prediksi harga saham; lihat bagian 3.
-- **Kanal:** utama `market` (ekonomi/pasar modal); tambahan opsional `research`, `syariah`. Kanal non-ekonomi tidak diambil agar aspek BERTopic tetap bersih.
-- **Sumber URL:** `robots.txt` CNBC sudah **diverifikasi** — halaman indeks (`/indeks/*`) dan URL ber-`?` di-*disallow* untuk Googlebot, dan halaman indeks dirender JavaScript sehingga tidak bisa diambil dengan BeautifulSoup biasa. Karena itu sumber URL utama adalah **sitemap resmi** (`sitemap_news.xml` + `sitemap_web.xml`), dengan jalur indeks/API sebagai pelengkap yang perlu diverifikasi dari lokal.
-- **Atribut yang diambil:** `id_artikel`, kanal, URL, tanggal terbit, judul, keywords, dan isi mentah. Minimal mengikuti jurnal preseden (judul, waktu terbit, isi) + metadata tambahan untuk reproducibility.
-- **Ekstraksi isi:** sudah **diverifikasi** pada HTML artikel asli — judul & tanggal dari JSON-LD (`NewsArticle`), isi dari kontainer `div.detail-text`. Artikel video dan duplikat dibuang; tidak ada penyaringan berdasarkan sentimen atau perusahaan tertentu.
+- **Fokus entitas:** hanya berita yang membahas **4 bank utama Indonesia — BCA, BNI, BRI, Mandiri**. Keempatnya adalah bank terbesar dari sisi kapitalisasi pasar & aset, penggerak utama IHSG, dan mewakili dua tipe: BCA (swasta) serta BRI/BNI/Mandiri (Himbara/BUMN).
+- **Periode:** **20 Oktober 2024 – 20 Oktober 2026** (dua tahun).
+- **Justifikasi periode (framing NETRAL):** periode ini dipakai sebagai **batas temporal studi kasus yang jelas dan mutakhir** — bertepatan dengan periode awal pemerintahan baru sebagai **penanda waktu**, bukan sebagai variabel penyebab. Selain itu, pembatasan periode menjaga **volume data tetap terkelola** agar effort anotasi ABSA realistis. Penelitian ini **deskriptif** (memotret sentimen pemberitaan per aspek dalam periode tersebut) dan **tidak membuat klaim kausal** apa pun tentang pengaruh pemerintahan terhadap sentimen; tidak ada kelompok pembanding sebelum Okt 2024, sehingga klaim komparatif antar-periode tidak diambil.
+- **Sumber:** CNBC Indonesia, via **halaman pencarian** (`/search?query=<kw>&page=<N>&fromdate=YYYY/MM/DD&todate=YYYY/MM/DD`). Filter 4 bank dilakukan lewat **keyword** gabungan nama + kode saham: `BCA/BBCA`, `BRI/BBRI`, `BNI/BBNI`, `Mandiri/BMRI` (hasil digabung & dedupe via `id_artikel`).
+- **Atribut yang diambil:** `id_artikel`, keyword, kanal, URL, timestamp terbit, judul, waktu listing, isi mentah.
+- **Ekstraksi isi:** judul dari elemen listing (`h2`) / JSON-LD; isi dari kontainer `div.detail-text` (gabung paragraf `<p>`). Artikel **video** (kode tipe 18/19) dan **duplikat** dibuang; tidak ada penyaringan berdasarkan tebakan sentimen.
 
-> **Detail teknis implementasi** (metode BeautifulSoup, selector, checkpoint/resume, skema file, mode pilot) didokumentasikan terpisah di **`plan.md`**. Notebook dijalankan dari repositori: <https://github.com/erik580/Text-mining---AOL-Project>.
+> **Detail teknis implementasi & alur seluruh pipeline** (metode scraping, selector, checkpoint/resume, pembagian tugas tim, dan timeline) didokumentasikan terpisah di **`alur_proses_dan_pembagian_tugas.md`**. Notebook dijalankan dari repositori: <https://github.com/erik580/Text-mining---AOL-Project>.
 
 ---
 
@@ -132,8 +133,8 @@ Yang dianotasi adalah sentimen **per pasangan (kalimat, aspek)**. Aspeknya sudah
 
 | id_berita | kalimat | aspek (dari BERTopic) | sentimen (label manusia) |
 |---|---|---|---|
-| 0123 | "Penerimaan pajak turun 5% dibanding tahun lalu." | Kebijakan fiskal | negatif |
-| 0123 | "IHSG ditutup menguat tipis." | Pasar modal | positif |
+| 0123 | "Laba bersih BBRI tumbuh 12% secara tahunan." | Kinerja / laba | positif |
+| 0123 | "Rasio kredit macet (NPL) ikut naik tipis." | Kualitas kredit | negatif |
 
 Jika aspek yang ditetapkan jelas salah, tandai **"aspek salah"**. Baris itu dikoreksi atau dibuang.
 
