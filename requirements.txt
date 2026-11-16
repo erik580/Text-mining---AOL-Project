@@ -1,9 +1,9 @@
 # =============================================================
 # Requirements untuk Phase 01: Crawling & Scraping CNBC Indonesia
 # =============================================================
-# Install (disarankan di virtual environment):
-#   python -m venv .venv
-#   .venv\Scripts\activate        (Windows PowerShell)
+# Lingkungan: Anaconda (conda). Contoh:
+#   conda create -n aol python=3.11
+#   conda activate aol
 #   pip install -r requirements.txt
 #
 # Menjalankan notebook:
@@ -11,17 +11,13 @@
 #   jupyter lab
 # =============================================================
 
-# --- HTTP & scraping ---
-requests==2.32.3            # unduh halaman / sitemap
-beautifulsoup4==4.12.3      # parser HTML utama (sesuai permintaan)
-lxml==5.3.0                 # backend parser cepat untuk BeautifulSoup (HTML & XML sitemap)
+# --- HTTP & parsing ---
+requests==2.32.3            # memanggil API JSON CNBC (/api/v2/search)
+beautifulsoup4==4.12.3      # membersihkan HTML di dalam field "strisi" dari API
+lxml==5.3.0                 # backend parser cepat untuk BeautifulSoup
 
 # --- Data handling ---
-pandas==2.2.3              # tabel data mentah + simpan CSV/Parquet
-pyarrow==17.0.0            # engine Parquet (disarankan untuk isi artikel yang panjang)
-
-# --- Utilitas ---
-tqdm==4.66.5               # progress bar saat crawl/scrape ribuan artikel
+pandas==2.2.3              # ringkasan data mentah + simpan/baca CSV
 
 # --- Lingkungan notebook (opsional, bila belum ada Jupyter) ---
 # jupyterlab==4.2.5
