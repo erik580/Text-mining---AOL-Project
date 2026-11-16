@@ -15,7 +15,7 @@ Satu notebook `.ipynb` **mandiri (self-contained)** per fase. Folder `data/` han
 
 | Fase | Notebook | Isi | Input | Output |
 |---|---|---|---|---|
-| **01** | `01_crawling_scraping.ipynb` | Scraping berita 4 bank dari `/search` CNBC + filter keyword + checkpoint | — | `data/raw/cnbc_4bank_full.csv` |
+| **01** | `01_crawling_scraping.ipynb` | Scraping berita 4 bank dari **API JSON** CNBC (`/api/v2/search`) + **filter kanal `market`** + filter keyword + checkpoint | — | `data/raw/cnbc_4bank_full.csv` |
 | **02** | `02_preprocessing_sentence_split.ipynb` | Cleaning ringan + pecah berita menjadi kalimat (+ id) | `cnbc_4bank_full.csv` | `data/processed/sentences.csv` |
 | **03** | `03_bertopic_aspek.ipynb` | BERTopic pada kalimat; penamaan & penggabungan klaster → aspek (rujuk FiQA) | `sentences.csv` | `data/processed/sentences_with_aspect.csv` + `daftar_aspek.md` |
 | **04** | `04_sampling_anotasi.ipynb` | Stratified sampling + sheet anotator + hitung Cohen's Kappa | `sentences_with_aspect.csv` | `data/annotation/to_annotate.csv`, `labeled.csv` |
@@ -41,11 +41,11 @@ Satu notebook `.ipynb` **mandiri (self-contained)** per fase. Folder `data/` han
 ## 2. Rincian tiap fase (checklist teknis)
 
 ### Fase 01 — Crawling & Scraping *(SUDAH SELESAI; pilot pass)*
-- Sumber: `GET /search?query=<kw>&page=<N>&fromdate=20/10/2024&todate=20/10/2026` (format `YYYY/MM/DD`).
+- **Metode: API JSON** `GET /api/v2/search?query=<kw>&fromdate=20/10/2024&todate=20/10/2026&start=<N>&limit=100` (format tanggal `YYYY/MM/DD`). API JSON dipakai sebagai metode utama karena halaman `/search` beralih ke render JavaScript sehingga tidak bisa di-scrape BeautifulSoup langsung.
 - Keyword 4 bank (nama + kode saham): `BCA, BBCA, BRI, BBRI, BNI, BBNI, Mandiri, BMRI` → gabung & dedupe via `id_artikel`.
-- Per artikel: judul (`h2`), link, waktu (`span` terakhir), isi (`div.detail-text`, gabung `<p>`). Buang video (kode tipe 18/19).
-- Checkpoint: tulis *append* ke CSV; skip `id_artikel` yang sudah ada.
-- Fallback bila `/search` beralih ke render JS: endpoint JSON `GET /api/v2/search?query=..&fromdate=..&todate=..&start=0&limit=100`.
+- **Filter kanal `market` spesifik** (sesuai proposal): kanal diambil dari pola URL `/{kanal}/{YYYYMMDDhhmmss}-{tipe}-{id}/`, cocokkan kanal utuh terhadap himpunan `{"market"}`. Buang video (kode tipe 18/19).
+- Field dari JSON: `strjudul` (judul), `articleUrl` (link), timestamp dari pola URL, `strisi` (HTML isi → dibersihkan dengan BeautifulSoup: buang script/style/iframe, blok "Baca juga", dateline, Disclaimer/Sanggahan).
+- Paginasi via `start`/`limit` (berhenti saat jumlah hasil < `limit`). Checkpoint: tulis *append* ke CSV; skip `id_artikel` yang sudah ada.
 
 ### Fase 02 — Preprocessing & pemecahan kalimat
 - Buang boilerplate sisa ("baca juga", iklan, dateline, tanda tangan penulis), normalisasi spasi/karakter.
